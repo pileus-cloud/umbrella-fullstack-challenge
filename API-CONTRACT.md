@@ -76,7 +76,7 @@ Response `200`:
 - Role: `admin` only
 - Idempotent on `(externalId, organizationId)` — re-ingesting same record counts as deduplicated
 - All records stored with `organization_id = X-Customer-Organization-Id`
-- **Apply governance tag rules on ingestion**: for each record, find the first matching enabled rule (by `id` order) and store `governance_tag_key`, `governance_tag_value`, `matched_rule_id`
+- **Apply governance tag rules on ingestion**: for each record, find the highest-priority matching enabled rule, tie-break by most recently updated rule, and store `governance_tag_key`, `governance_tag_value`, `matched_rule_id`, and `explainability`
 
 ---
 
@@ -104,7 +104,12 @@ Response `200`:
       "amount": 142.35,
       "governanceTagKey": "CostCategory",
       "governanceTagValue": "Compute",
-      "matchedRuleId": 1
+      "matchedRuleId": 1,
+      "explainability": {
+        "matched": true,
+        "ruleId": 1,
+        "reason": "service exactly matched AmazonEC2"
+      }
     }
   ],
   "total": 42,
@@ -146,7 +151,7 @@ Rule shape:
 
 `fieldName` may reference: `service`, `region`, `cloudProvider`, `accountId`, or `native_tags` (match against JSON string representation)
 
-**Matching order**: First matching enabled rule wins (ordered by `id`). Only ONE rule is applied per record. The `priority` field is stored but not used for matching order in the core challenge (see Bonus in CHALLENGE.md).
+**Matching order**: Higher `priority` wins; ties are broken by most recently updated rule. Only ONE rule is applied per record.
 
 ---
 
@@ -170,7 +175,8 @@ Response `200`:
     { "group": "CostCategory:Compute",    "totalAmount": 142.35, "recordCount": 1 },
     { "group": "Lifecycle:Production",     "totalAmount": 24.77,  "recordCount": 1 },
     { "group": "untagged",                 "totalAmount": 0.00,   "recordCount": 0 }
-  ]
+  ],
+  "warnings": []
 }
 ```
 
@@ -180,7 +186,7 @@ Response `200`:
 - Response: `{"date":"2026-03-03","base":"EUR","quote":"USD","rate":1.1656}`
 - `rate` is the multiplier: `converted = original_amount * rate`
 - Cache rates in `exchange_rate_cache` table — historical rates don't change
-- If the API is unavailable, return `502`
+- If frankfurter.dev is unavailable for an uncached rate, leave that record in its original currency and include a `warnings` array in the response.
 
 ---
 

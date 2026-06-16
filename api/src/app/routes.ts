@@ -2,6 +2,9 @@ import { Router } from 'express';
 import { authenticator } from '../middlewares/authenticator';
 import { grantChecker } from '../middlewares/grantChecker';
 import organizationsRouter from '../organizations/organizations.router';
+import usageCostRecordsRouter from '../usage-cost-records/usage-cost-records.router';
+import governanceTagRulesRouter from '../governance-tag-rules/governance-tag-rules.router';
+import allocationRouter from '../allocation/allocation.router';
 
 const v1Router = Router();
 
@@ -16,11 +19,8 @@ v1Router.use('/organizations', organizationsRouter);
 // ─────────────────────────────────────────────────────────────────────────────
 v1Router.use(grantChecker);
 
-// TODO: mount your governance-tags router here, e.g.:
-// import governanceTagsRouter from '../governance-tags/governance-tags.router';
-// v1Router.use('/usage-cost-records', usageCostRecordsRouter);
-// v1Router.use('/governance-tag-rules', governanceTagRulesRouter);
-// v1Router.use('/governance-tagging', governanceTaggingRouter);
-// v1Router.use('/allocation', allocationRouter);
+v1Router.use('/usage-cost-records', usageCostRecordsRouter);
+v1Router.use('/governance-tag-rules', governanceTagRulesRouter);
+v1Router.use('/allocation', allocationRouter);
 
 export default v1Router;

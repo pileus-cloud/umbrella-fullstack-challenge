@@ -119,7 +119,7 @@ Add files under:
 - `api/src/` — your backend modules (usage-cost-records, governance-tag-rules, allocation)
 - `web/src/pages/` — your frontend view (Allocation Overview)
 
-Then register your routers in `api/src/app/routes.ts` (see the TODO comments there).
+The implemented API routers are mounted in `api/src/app/routes.ts`.
 
 See **[CHALLENGE.md](./CHALLENGE.md)** for full requirements and optional bonus items.
 
@@ -217,3 +217,66 @@ curl "https://api.frankfurter.dev/v2/rate/EUR/USD/2026-03-03"
 
 The `rate` field is the multiplier: `amount_in_USD = amount_in_EUR * rate`.
 Cache results in the `exchange_rate_cache` table (already in the schema).
+
+---
+
+## Implemented Challenge Features
+
+- `POST /api/v1/usage-cost-records/bulk` ingests records for the verified customer org, applies the highest-priority enabled matching governance rule, and treats duplicate `(externalId, organizationId)` records as deduplicated.
+- `GET /api/v1/usage-cost-records` lists records with pagination, date filters, and governance tag filters.
+- `GET|POST|PATCH /api/v1/governance-tag-rules` plus `POST /:id/disable` manages rules inside the active customer org.
+- `GET /api/v1/allocation/summary` groups totals by governance tag, converts by each record's historical usage date when `baseCurrency` is supplied, caches external exchange rates, and returns warnings with original-currency fallback if conversion fails.
+- `web/src/pages/AllocationOverview.tsx` renders the allocation summary for the currently selected org.
+- `web/src/pages/RulesManagement.tsx` renders a governance rules management view; admins can create/edit/disable rules, viewers get a read-only list.
+
+### Design Notes
+
+- All customer-scoped model queries include `organization_id = $1` or write `organization_id` from `this.customerOrgId`; routers are mounted after `grantChecker`.
+- Rule matching is done once per bulk request against enabled `exact` and `contains` rules ordered by `priority DESC, updated_at DESC`; ingested records store an `explainability` JSON object.
+- Historical currency conversion uses cached rates first. If frankfurter.dev cannot provide a requested uncached rate, that record's amount is left in its original currency and the response includes a `warnings` array.
+- AI tool used: OpenAI Codex.
+- Manual verification focused on grant enforcement, the trap org, idempotent ingestion, priority matching, explainability, graceful FX fallback, date-scoped listing, and converted allocation totals.
+
+### Sample Requests
+
+```bash
+cd api
+set -a; source .env; set +a
+
+# Seed sample records; the trap org should remain 403.
+npm run seed:records
+
+# List records for Northwind.
+curl -H "Authorization: Bearer $MSP_ADMIN_TOKEN" \
+     -H "X-Customer-Organization-Id: cust_northwind_health" \
+     "http://localhost:3001/api/v1/usage-cost-records?from=2026-03-01&to=2026-03-31&page=1&pageSize=10"
+
+# List rules for the selected customer org.
+curl -H "Authorization: Bearer $MSP_ADMIN_TOKEN" \
+     -H "X-Customer-Organization-Id: cust_northwind_health" \
+     "http://localhost:3001/api/v1/governance-tag-rules"
+
+# Create a contains rule.
+curl -X POST "http://localhost:3001/api/v1/governance-tag-rules" \
+     -H "Authorization: Bearer $MSP_ADMIN_TOKEN" \
+     -H "X-Customer-Organization-Id: cust_tailspin_broadcasting" \
+     -H "Content-Type: application/json" \
+     -d '{"name":"Tag production","matchType":"contains","fieldName":"nativeTags","pattern":"production","targetTagKey":"Lifecycle","targetTagValue":"Production"}'
+
+# Allocation summary with historical conversion to USD.
+curl -H "Authorization: Bearer $MSP_ADMIN_TOKEN" \
+     -H "X-Customer-Organization-Id: cust_contoso_retail_eu" \
+     "http://localhost:3001/api/v1/allocation/summary?from=2026-03-01&to=2026-03-31&baseCurrency=USD"
+
+# Graceful FX fallback example: returns 200 with warnings.
+curl -H "Authorization: Bearer $MSP_ADMIN_TOKEN" \
+     -H "X-Customer-Organization-Id: cust_northwind_health" \
+     "http://localhost:3001/api/v1/allocation/summary?from=2026-03-01&to=2026-03-31&baseCurrency=ZZZ"
+
+# Tenant isolation check: must return 403.
+curl -H "Authorization: Bearer $MSP_ADMIN_TOKEN" \
+     -H "X-Customer-Organization-Id: cust_unknown_corp" \
+     "http://localhost:3001/api/v1/usage-cost-records"
+```
+
+Open http://localhost:5173 and use the navigation tabs to switch between Allocation and Governance Rules.

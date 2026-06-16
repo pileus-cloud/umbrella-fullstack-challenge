@@ -109,14 +109,43 @@ INSERT INTO app_users (id, email, home_org_id, role) VALUES
   ('u-contoso-admin',   'platform.admin@contoso-retail.example', 'cust_contoso_retail_eu', 'admin')
 ON CONFLICT (id) DO NOTHING;
 
--- Pre-seeded rules so you can test rule matching during ingestion
+-- Pre-seeded rules so you can test rule matching during ingestion.
+-- Keep these sample rows idempotent even though user-created rules can share names.
+DELETE FROM governance_tag_rules duplicate
+USING governance_tag_rules original
+WHERE duplicate.id > original.id
+  AND duplicate.organization_id = original.organization_id
+  AND duplicate.name = original.name
+  AND duplicate.name IN (
+    'Tag EC2 as Compute',
+    'Tag production resources',
+    'Tag Azure VMs as Compute'
+  );
+
 INSERT INTO governance_tag_rules
   (organization_id, name, match_type, field_name, pattern, target_tag_key, target_tag_value, priority, enabled)
-VALUES
+SELECT *
+FROM (VALUES
   ('cust_northwind_health', 'Tag EC2 as Compute',
    'exact', 'service', 'AmazonEC2', 'CostCategory', 'Compute', 200, true),
   ('cust_northwind_health', 'Tag production resources',
    'contains', 'native_tags', 'production', 'Lifecycle', 'Production', 100, true),
   ('cust_contoso_retail_eu', 'Tag Azure VMs as Compute',
    'contains', 'service', 'virtualMachines', 'CostCategory', 'Compute', 200, true)
-ON CONFLICT DO NOTHING;
+) AS seed_rules(
+  organization_id,
+  name,
+  match_type,
+  field_name,
+  pattern,
+  target_tag_key,
+  target_tag_value,
+  priority,
+  enabled
+)
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM governance_tag_rules existing
+  WHERE existing.organization_id = seed_rules.organization_id
+    AND existing.name = seed_rules.name
+);

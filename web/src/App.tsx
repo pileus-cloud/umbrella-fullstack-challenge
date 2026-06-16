@@ -1,19 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { OrgSwitcher } from './components/OrgSwitcher';
+import { AllocationOverview } from './pages/AllocationOverview';
+import { RulesManagement } from './pages/RulesManagement';
 
 /**
  * App shell — pre-configured with:
  *   - Token setup UI (paste your JWT from sample-data/sample-tokens.md)
  *   - OrgSwitcher component (pre-built, calls GET /api/v1/organizations)
- *   - Placeholder area for your views
- *
- * Add your pages under src/pages/ and link them here.
+ *   - Allocation and governance rules views
  */
 
 export default function App() {
   const [token, setToken] = useState(localStorage.getItem('token') || '');
   const [tokenSaved, setTokenSaved] = useState(!!localStorage.getItem('token'));
   const [currentOrg, setCurrentOrg] = useState(localStorage.getItem('customerOrgId') || '');
+  const [activePage, setActivePage] = useState<'allocation' | 'rules'>('allocation');
+  const isAdmin = getTokenRoles(token).includes('admin');
 
   function saveToken() {
     const trimmed = token.trim();
@@ -64,24 +66,26 @@ export default function App() {
       </header>
 
       <nav style={styles.nav}>
-        {/* Add links to your views here, e.g.: */}
-        {/* <a href="/rules">Governance Rules</a> */}
-        {/* <a href="/allocation">Allocation</a> */}
-        <span style={{ color: '#888', fontSize: 13 }}>
-          Add navigation links to your views here (src/App.tsx)
-        </span>
+        <button
+          style={activePage === 'allocation' ? styles.navItemActive : styles.navItem}
+          onClick={() => setActivePage('allocation')}
+        >
+          Allocation
+        </button>
+        <button
+          style={activePage === 'rules' ? styles.navItemActive : styles.navItem}
+          onClick={() => setActivePage('rules')}
+        >
+          Governance Rules
+        </button>
       </nav>
 
       <main style={styles.main}>
-        <div style={styles.placeholder}>
-          <h2 style={{ fontSize: 18, marginBottom: 8 }}>Ready to build</h2>
-          <p style={{ fontSize: 14, color: '#555' }}>
-            Current org: <strong>{currentOrg || 'none selected'}</strong>
-          </p>
-          <p style={{ fontSize: 13, color: '#888', marginTop: 12 }}>
-            Add your pages under <code>src/pages/</code> and link them in the nav above.
-          </p>
-        </div>
+        {activePage === 'allocation' ? (
+          <AllocationOverview currentOrg={currentOrg} />
+        ) : (
+          <RulesManagement currentOrg={currentOrg} isAdmin={isAdmin} />
+        )}
       </main>
     </div>
   );
@@ -117,9 +121,37 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '8px 24px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb',
     display: 'flex', gap: 16,
   },
-  main: { flex: 1, padding: 24 },
-  placeholder: {
-    background: '#fff', borderRadius: 8, padding: 32, maxWidth: 600,
-    border: '2px dashed #d1d5db', textAlign: 'center',
+  navItem: {
+    background: 'transparent',
+    border: 'none',
+    padding: '4px 0',
+    fontSize: 13,
+    fontWeight: 700,
+    color: '#526071',
+    cursor: 'pointer',
   },
+  navItemActive: {
+    background: 'transparent',
+    border: 'none',
+    borderBottom: '2px solid #2563eb',
+    padding: '4px 0',
+    fontSize: 13,
+    fontWeight: 700,
+    color: '#172033',
+    cursor: 'pointer',
+  },
+  main: { flex: 1, padding: 24 },
 };
+
+function getTokenRoles(token: string): string[] {
+  try {
+    const payload = token.split('.')[1];
+    if (!payload) return [];
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const normalizedPayload = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+    const decoded = JSON.parse(atob(normalizedPayload));
+    return Array.isArray(decoded.roles) ? decoded.roles : [];
+  } catch (err) {
+    return [];
+  }
+}
